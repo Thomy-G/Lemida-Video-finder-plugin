@@ -1,0 +1,24 @@
+[project]
+name = "lemida-video-finder"
+version = "0.1.0"
+description = "Extract and download video links from Bar-Ilan University Lemida (Moodle) courses"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.15.0",
+    "lxml>=6.1.3",
+    "playwright>=1.64.0",
+    "requests>=2.34.2",
+    "rich>=15.0.0",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+lemida-cli = "cli.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cli"]

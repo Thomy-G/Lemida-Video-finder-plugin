@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Lemida session credentials (keep private)
+.lemida_session.json
+*.session.json
+
+# Exported media / downloads
+*.mp4
+*.m3u
+*.m3u8
+videos.txt
+videos.json
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

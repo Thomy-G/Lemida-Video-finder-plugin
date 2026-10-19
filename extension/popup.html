@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lemida Video Finder</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="5 3 19 12 5 21 5 3" fill="currentColor"></polygon>
+          </svg>
+        </div>
+        <div>
+          <h1 class="logo-title">Lemida Video Finder</h1>
+          <p class="logo-subtitle">Bar-Ilan Moodle Video Extractor</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span id="video-count-badge" class="badge badge-emerald">0 Videos</span>
+      </div>
+    </header>
+
+    <!-- Course Banner -->
+    <div id="course-banner" class="course-banner">
+      <div class="course-info">
+        <span class="course-label">Course:</span>
+        <span id="course-title" class="course-name">Loading...</span>
+        <span id="course-id-tag" class="tag">ID: -</span>
+      </div>
+      <button id="refresh-btn" class="icon-btn" title="Rescan page">
+        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Not on Lemida Warning -->
+    <div id="not-lemida-banner" class="warning-banner hidden">
+      <p>You are not currently on a Lemida course page.</p>
+      <a href="https://lemida.biu.ac.il" target="_blank" class="btn btn-sm btn-primary">Go to Lemida BIU</a>
+    </div>
+
+    <!-- Quick Action Bar -->
+    <div class="action-bar">
+      <button id="copy-all-btn" class="btn btn-primary" title="Copy all video links to clipboard">
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        Copy All Links
+      </button>
+      
+      <button id="deep-scan-btn" class="btn btn-secondary" title="Deep scan subpages and linked activities">
+        <svg viewBox="0 0 24 24" width="15" height="15" stroke="currentColor" stroke-width="2" fill="none">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        Deep Scan
+      </button>
+
+      <div class="dropdown">
+        <button id="export-dropdown-btn" class="btn btn-ghost" title="More export formats">
+          Export ▾
+        </button>
+        <div id="export-menu" class="dropdown-menu hidden">
+          <button id="export-txt-btn" class="dropdown-item">📄 Download Text (.txt)</button>
+          <button id="export-json-btn" class="dropdown-item">📦 Download JSON (.json)</button>
+          <button id="export-m3u-btn" class="dropdown-item">🎵 Download VLC Playlist (.m3u)</button>
+          <button id="export-ytdlp-btn" class="dropdown-item">💻 Copy yt-dlp Commands</button>
+          <div class="dropdown-divider"></div>
+          <button id="export-cli-btn" class="dropdown-item">⚡ Copy CLI Command</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search & Filter -->
+    <div class="search-bar">
+      <svg class="search-icon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <input type="text" id="search-input" placeholder="Filter by title, section, or url...">
+      <button id="clear-search" class="clear-btn hidden">&times;</button>
+    </div>
+
+    <!-- Video List Container -->
+    <div id="video-list" class="video-list">
+      <div class="empty-state">
+        <div class="spinner"></div>
+        <p>Scanning course page for videos...</p>
+      </div>
+    </div>
+
+    <!-- Footer Controls -->
+    <footer class="app-footer">
+      <div style="display: flex; gap: 8px;">
+        <button id="toggle-xpath-btn" class="link-btn">
+          <span>⚙️ Settings / XPath</span>
+        </button>
+        <button id="diagnose-btn" class="link-btn" title="Inspect page DOM and show diagnostic breakdown">
+          <span>🔍 Diagnose DOM</span>
+        </button>
+      </div>
+      <span class="version-label">v1.0.1</span>
+    </footer>
+
+    <!-- XPath Drawer (Collapsible) -->
+    <div id="xpath-drawer" class="xpath-drawer hidden">
+      <div class="drawer-header">
+        <h3>XPath Selector</h3>
+        <button id="close-drawer-btn" class="close-btn">&times;</button>
+      </div>
+      <p class="drawer-desc">XPath for video sections:</p>
+      <div class="xpath-input-group">
+        <input type="text" id="custom-xpath-input" value="/html/body/div[3]/div[5]/div/div/div[2]/div[2]/div/section/div[2]/div[1]/div[1]/div/video/source">
+        <button id="apply-xpath-btn" class="btn btn-sm btn-primary">Apply</button>
+      </div>
+      <div class="drawer-actions">
+        <button id="reset-xpath-btn" class="link-btn">Reset to Default</button>
+        <button id="copy-session-btn" class="btn btn-sm btn-ghost">📋 Copy Session Cookie</button>
+      </div>
+    </div>
+
+    <!-- Diagnostics Drawer -->
+    <div id="diag-drawer" class="xpath-drawer hidden" style="max-height: 80vh; overflow-y: auto;">
+      <div class="drawer-header">
+        <h3>🔍 Page DOM Diagnostics</h3>
+        <button id="close-diag-btn" class="close-btn">&times;</button>
+      </div>
+      <div id="diag-content" style="font-family: monospace; font-size: 11px; color: #cbd5e1; white-space: pre-wrap; background: #0b0f19; padding: 8px; border-radius: 6px; margin-top: 6px;">
+        Running diagnostics...
+      </div>
+      <div style="margin-top: 8px; text-align: right;">
+        <button id="copy-diag-btn" class="btn btn-sm btn-secondary">Copy Diagnostics</button>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
