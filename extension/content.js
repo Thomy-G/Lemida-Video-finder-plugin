@@ -218,6 +218,7 @@
         const absUrl = new URL(rawUrl, window.location.href).href;
         if (seenUrls.has(absUrl)) return;
         if (absUrl.startsWith('javascript:')) return;
+        if (absUrl.includes('/mod/') || absUrl.includes('/course/') || absUrl.includes('view.php')) return;
 
         seenUrls.add(absUrl);
         const title = customTitle || extractVideoTitle(el);
@@ -293,28 +294,7 @@
       }
     }
 
-    // 5. If 0 direct videos were found AND we are on a course overview page (course/view.php):
-    // List all VideoStream lecture activities directly so the user sees every lecture right away!
-    if (found.length === 0) {
-      const activityLinks = findVideoActivityLinks();
-      for (const act of activityLinks) {
-        if (!seenUrls.has(act.url)) {
-          seenUrls.add(act.url);
-          found.push({
-            id: `act_${found.length + 1}`,
-            title: act.title,
-            section: act.section,
-            url: act.url,
-            type: act.isVideoStream ? 'VideoStream Lecture' : 'Video Activity',
-            xpathMatched: 'mod_activity_link',
-            sourceType: 'lecture_page',
-            isDirectStream: false,
-            originUrl: act.url
-          });
-        }
-      }
-    }
-
+    // Direct video sources on the page
     return found;
   }
 
@@ -390,6 +370,13 @@
       }
 
       if (!directUrl) {
+        const oracleMatch = htmlText.match(/["'](https?:\/\/[^"'\s<>]*oraclecloud\.com\/[^"'\s<>]+)["']/i);
+        if (oracleMatch && oracleMatch[1]) {
+          directUrl = oracleMatch[1];
+        }
+      }
+
+      if (!directUrl) {
         const mp4Match = htmlText.match(/["'](https?:\/\/[^"'\s<>]+\.(?:mp4|m3u8)[^"'\s<>]*)["']/i);
         if (mp4Match && mp4Match[1]) {
           directUrl = mp4Match[1];
@@ -432,45 +419,25 @@
 
           const stream = extractStreamFromHtml(htmlText, act.url, customXPath);
           if (stream && !seenUrls.has(stream.url)) {
-            seenUrls.add(stream.url);
-            return {
-              id: `vid_${results.length + 1}`,
-              title: act.title,
-              section: act.section,
-              url: stream.url,
-              type: stream.type,
-              xpathMatched: PRIMARY_XPATH,
-              sourceType: 'videostream_direct',
-              isDirectStream: true,
-              originUrl: act.url
-            };
-          } else {
-            // Keep the activity link as fallback
-            return {
-              id: `vid_${results.length + 1}`,
-              title: act.title,
-              section: act.section,
-              url: act.url,
-              type: 'VideoStream Lecture',
-              xpathMatched: 'mod_videostream',
-              sourceType: 'lecture_page',
-              isDirectStream: false,
-              originUrl: act.url
-            };
+            // Guarantee this is a backend video hoster and NOT a Moodle page
+            if (!stream.url.includes('/mod/')) {
+              seenUrls.add(stream.url);
+              return {
+                id: `vid_${results.length + 1}`,
+                title: act.title,
+                section: act.section,
+                url: stream.url,
+                type: stream.type,
+                xpathMatched: PRIMARY_XPATH,
+                sourceType: 'videostream_direct',
+                isDirectStream: true,
+                originUrl: act.url
+              };
+            }
           }
+          return null;
         } catch (err) {
-          // If fetch fails, keep the original lecture page link
-          return {
-            id: `vid_${results.length + 1}`,
-            title: act.title,
-            section: act.section,
-            url: act.url,
-            type: 'VideoStream Lecture',
-            xpathMatched: 'mod_videostream',
-            sourceType: 'lecture_page',
-            isDirectStream: false,
-            originUrl: act.url
-          };
+          return null;
         } finally {
           completed++;
           if (progressCb) progressCb(completed, total);

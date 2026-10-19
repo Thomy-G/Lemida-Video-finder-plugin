@@ -187,6 +187,10 @@ def parse_videos_from_html(
             if abs_url in seen_urls:
                 continue
 
+            # Ensure we only pick up direct backend streams / hosters, never Moodle page URLs
+            if any(x in abs_url for x in ["/mod/", "/course/", "view.php"]):
+                continue
+
             tag_name = element.tag.lower()
             source_type = "iframe" if tag_name == "iframe" else "html5_video"
 

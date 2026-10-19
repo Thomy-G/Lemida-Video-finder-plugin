@@ -120,7 +120,7 @@ def crawl_course_videos(
         direct_sources = page.query_selector_all("video source, video")
         for s in direct_sources:
             src = s.get_attribute("src")
-            if src and src not in seen_urls:
+            if src and src not in seen_urls and not any(x in src for x in ["/mod/", "/course/", "view.php"]):
                 seen_urls.add(src)
                 videos.append(
                     VideoItem(
@@ -205,47 +205,22 @@ def crawl_course_videos(
                                 direct_url = match.group(1)
 
                         if direct_url and direct_url not in seen_urls:
-                            seen_urls.add(direct_url)
-                            videos.append(
-                                VideoItem(
-                                    id=f"vid_{len(videos) + 1}",
-                                    title=act["title"],
-                                    section=act["section"],
-                                    url=direct_url,
-                                    video_type=video_type,
-                                    xpath_matched=target_xpath,
-                                    source_type="videostream_direct",
-                                    origin_url=act["url"],
+                            if not any(x in direct_url for x in ["/mod/", "/course/", "view.php"]):
+                                seen_urls.add(direct_url)
+                                videos.append(
+                                    VideoItem(
+                                        id=f"vid_{len(videos) + 1}",
+                                        title=act["title"],
+                                        section=act["section"],
+                                        url=direct_url,
+                                        video_type=video_type,
+                                        xpath_matched=target_xpath,
+                                        source_type="videostream_direct",
+                                        origin_url=act["url"],
+                                    )
                                 )
-                            )
-                        else:
-                            # Fallback to the activity page URL if direct stream extraction failed
-                            videos.append(
-                                VideoItem(
-                                    id=f"vid_{len(videos) + 1}",
-                                    title=act["title"],
-                                    section=act["section"],
-                                    url=act["url"],
-                                    video_type="VideoStream Page",
-                                    xpath_matched="mod_videostream",
-                                    source_type="lecture_page",
-                                    origin_url=act["url"],
-                                )
-                            )
                     except Exception:
-                        # Add fallback link
-                        videos.append(
-                            VideoItem(
-                                id=f"vid_{len(videos) + 1}",
-                                title=act["title"],
-                                section=act["section"],
-                                url=act["url"],
-                                video_type="VideoStream Page",
-                                xpath_matched="mod_videostream",
-                                source_type="lecture_page",
-                                origin_url=act["url"],
-                            )
-                        )
+                        pass
 
         browser.close()
 
