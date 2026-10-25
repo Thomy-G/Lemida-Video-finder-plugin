@@ -403,7 +403,13 @@ def telegram_upload(
 
     cfg = load_telegram_config()
     if channel:
-        cfg["target_chat"] = channel
+        if "_" in channel:
+            parts = channel.split("_", 1)
+            cfg["target_chat"] = parts[0]
+            if topic is None and parts[1].isdigit():
+                cfg["topic_id"] = int(parts[1])
+        else:
+            cfg["target_chat"] = channel
     if topic is not None:
         cfg["topic_id"] = topic
 

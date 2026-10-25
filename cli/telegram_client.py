@@ -248,8 +248,12 @@ class TelegramUploader:
         dest_chat = target_chat or self.target_chat
         dest_topic = topic_id if topic_id is not None else self.topic_id
 
-        if not dest_chat:
-            return False, "Target chat/channel is not specified."
+        # Parse combined chat_id_topic_id from Telegram Web URLs (e.g. -1004471025562_2)
+        if isinstance(dest_chat, str) and "_" in dest_chat:
+            parts = dest_chat.split("_", 1)
+            dest_chat = parts[0]
+            if dest_topic is None and parts[1].isdigit():
+                dest_topic = int(parts[1])
 
         # Parse numeric chat IDs if given as string
         if isinstance(dest_chat, str) and (dest_chat.startswith("-100") or dest_chat.isdigit() or (dest_chat.startswith("-") and dest_chat[1:].isdigit())):
