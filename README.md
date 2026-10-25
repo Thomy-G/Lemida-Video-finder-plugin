@@ -108,14 +108,72 @@ uv run lemida-cli fetch 108883 --links-only
 uv run lemida-cli fetch 108883 --ytdlp
 ```
 
-#### 6. Using a Custom XPath
+---
+
+## 📺 3. Interactive TUI (Terminal User Interface)
+
+Launch the full-screen terminal app to browse courses, stream lectures directly in media players, and manage Telegram backups:
+
 ```bash
-uv run lemida-cli fetch 108883 --xpath "/html/body/div[3]/div[5]/div/div/div[2]/div[2]/div/section/div[2]/div[1]/div[1]/div/video/source"
+uv run lemida-cli tui
+```
+or preload directly from an exported JSON file:
+```bash
+uv run lemida-cli tui --file lemida_course_108883_videos.json
 ```
 
-#### 7. Pass Cookie Directly (without running `login`)
+### Keybindings & Controls:
+| Key | Action |
+| :--- | :--- |
+| `Space` / `Enter` | **Watch Video**: Streams the selected lecture in VLC or MPV without leaving the TUI |
+| `U` | **Upload to Telegram**: Uploads selected lecture to your Telegram channel |
+| `A` | **Upload All**: Batch uploads all course lectures |
+| `C` | **Copy URL**: Copies direct backend stream URL (`.mp4`) to clipboard |
+| `Q` | **Quit** |
+
+---
+
+## ✈ 4. Telegram Video Backup
+
+Backup large course videos (>50MB, up to 2GB/4GB) directly to your private Telegram channel or forum topic with streaming support.
+
+### Step 1: Configure Telegram MTProto (One-time)
 ```bash
-uv run lemida-cli fetch 108883 --cookie "MoodleSession=your_session_token_here"
+uv run lemida-cli telegram config
+```
+*Prompted for `api_id` and `api_hash` (obtain from [my.telegram.org](https://my.telegram.org)) and your target channel/chat ID (e.g. `@my_course_channel` or numeric ID).*
+
+Verify configuration anytime:
+```bash
+uv run lemida-cli telegram status
+```
+
+### Step 2: Upload from an Exported JSON File
+```bash
+uv run lemida-cli telegram upload --file lemida_course_108883_videos.json
+```
+
+### Step 3: Direct Course Crawl & Upload
+```bash
+uv run lemida-cli telegram upload 108883
+```
+*Options:*
+- `--channel <chat_id>`: Override target channel or group.
+- `--topic <topic_id>`: Post into a specific Telegram forum topic.
+- Deduplication cache (`~/.lemida_telegram_uploads.json`) automatically skips previously uploaded videos.
+
+---
+
+## 🎬 5. Watch Videos on the Command Line
+
+Watch any course lecture directly in **VLC** or **MPV**:
+
+```bash
+# Watch lecture #1 from course 108883:
+uv run lemida-cli play 108883 --index 1
+
+# Play directly from a stream URL:
+uv run lemida-cli play "https://...oraclecloud.com/...mp4" --player vlc
 ```
 
 ---
@@ -132,17 +190,17 @@ Lemida-Video-finder-plugin/
 │   ├── popup.css                    # Modern UI styles
 │   ├── popup.js                     # Extension popup controller
 │   └── icons/                       # High-res extension icons
-│       ├── icon16.png
-│       ├── icon48.png
-│       └── icon128.png
 ├── cli/                             # Python CLI Package
 │   ├── main.py                      # Typer CLI entrypoint
+│   ├── tui.py                       # Textual interactive Terminal UI
+│   ├── player.py                    # VLC / MPV playback launcher
+│   ├── telegram_client.py           # Telethon MTProto uploader & JSON importer
+│   ├── crawler.py                   # Playwright headless crawler
 │   ├── parser.py                    # XPath & DOM parsing logic
 │   ├── auth.py                      # SSO login & cookie management
 │   └── exporter.py                  # Table, JSON, M3U & yt-dlp formatters
 ├── tests/                           # Unit tests
-│   └── test_parser.py               # Parser & XPath test suite
-├── pyproject.toml                   # uv project definition
+├── pyproject.toml                   # uv project definition & dependencies
 └── README.md                        # Documentation
 ```
 

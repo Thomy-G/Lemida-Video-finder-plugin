@@ -4,6 +4,12 @@ cli/main.py - Lemida Video Finder CLI Entrypoint
 
 from __future__ import annotations
 import sys
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from typing import Optional
 import typer
 from rich.console import Console
@@ -211,9 +217,249 @@ def fetch(
         save_to_file(content, output)
 
 
+@app.command()
+def tui(
+    file: Optional[str] = typer.Option(
+        None, "--file", "-f", help="Preload videos from an exported JSON file"
+    )
+):
+    """
+    Launch the interactive Terminal User Interface (TUI) to browse, stream, and backup videos.
+    """
+    from .tui import launch_tui
+    launch_tui(initial_json_path=file)
+
+
+@app.command()
+def play(
+    target: str = typer.Argument(..., help="Direct video URL or Course ID to play"),
+    index: int = typer.Option(1, "--index", "-i", help="Video index to play if Course ID is provided (1-based)"),
+    player: Optional[str] = typer.Option(None, "--player", "-p", help="Media player to use (vlc, mpv, ffplay, system)"),
+):
+    """
+    Watch a video lecture directly in your terminal/media player (VLC, MPV, FFplay).
+    """
+    from .player import play_video, get_default_player
+
+    url_to_play = target.strip()
+
+    # If target is numeric or course URL, crawl course to find the video
+    if url_to_play.isdigit() or "/course/" in url_to_play:
+        from .crawler import crawl_course_videos
+        console.print(f"[cyan]Fetching course {url_to_play} to stream video #{index}...[/cyan]")
+        course, videos = crawl_course_videos(url_to_play, headless=True)
+        if not videos:
+            console.print("[bold red]No direct video streams found in this course.[/bold red]")
+            sys.exit(1)
+        if index < 1 or index > len(videos):
+            console.print(f"[bold red]Invalid video index {index}. Course has {len(videos)} videos.[/bold red]")
+            sys.exit(1)
+        target_video = videos[index - 1]
+        url_to_play = target_video.url
+        title = target_video.title
+    else:
+        title = "Lemida Video Stream"
+
+    chosen_player = player or get_default_player()
+    console.print(f"[green]Launching video in {chosen_player.upper()}...[/green]")
+    success, msg = play_video(url_to_play, title=title, player_choice=chosen_player)
+    if success:
+        console.print(f"[bold green]✓ {msg}[/bold green]")
+    else:
+        console.print(f"[bold red]✗ {msg}[/bold red]")
+        sys.exit(1)
+
+
+# ---------------- Telegram Commands ----------------
+
+telegram_app = typer.Typer(
+    help="Backup and upload video lectures to Telegram channels or forum topics.",
+    no_args_is_help=True,
+)
+app.add_typer(telegram_app, name="telegram")
+
+
+@telegram_app.command("config")
+def telegram_config():
+    """
+    Interactively configure Telegram API credentials and authenticate once.
+    """
+    import asyncio
+    from .telegram_client import load_telegram_config, save_telegram_config, TelegramUploader
+
+    console.print("[bold cyan]Telegram MTProto Configuration[/bold cyan]")
+    console.print("[dim]Get your API ID and API Hash from https://my.telegram.org[/dim]\n")
+
+    current = load_telegram_config()
+
+    api_id_str = typer.prompt("Telegram API ID", default=str(current.get("api_id") or ""))
+    api_hash = typer.prompt("Telegram API Hash", default=str(current.get("api_hash") or ""))
+    target_chat = typer.prompt("Target Channel / Chat ID (e.g. @my_channel or -100...)", default=str(current.get("target_chat") or ""))
+    topic_id = typer.prompt("Forum Topic ID (optional, press Enter to skip)", default=str(current.get("topic_id") or ""), show_default=False)
+    bot_token = typer.prompt("Bot Token (optional, press Enter to login as user)", default=str(current.get("bot_token") or ""), show_default=False)
+
+    new_cfg = {
+        "api_id": api_id_str.strip(),
+        "api_hash": api_hash.strip(),
+        "target_chat": target_chat.strip(),
+        "topic_id": topic_id.strip() if topic_id else None,
+        "bot_token": bot_token.strip() if bot_token else None,
+    }
+    save_telegram_config(new_cfg)
+    console.print("\n[bold green]✓ Configuration saved to ~/.lemida_telegram.json[/bold green]")
+
+    # Test login
+    console.print("[cyan]Connecting and verifying Telegram session...[/cyan]")
+    try:
+        uploader = TelegramUploader(new_cfg)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        success = loop.run_until_complete(uploader.connect(interactive=True))
+        loop.run_until_complete(uploader.disconnect())
+        loop.close()
+
+        if success:
+            console.print("[bold green]✓ Telegram authentication succeeded and session is active![/bold green]")
+        else:
+            console.print("[yellow]Could not verify authorization.[/yellow]")
+    except Exception as e:
+        console.print(f"[bold red]Connection error:[/bold red] {e}")
+
+
+@telegram_app.command("status")
+def telegram_status():
+    """
+    Check current Telegram configuration and upload history.
+    """
+    from .telegram_client import load_telegram_config, load_uploads_cache, is_telegram_configured
+
+    if not is_telegram_configured():
+        console.print("[yellow]Telegram is not configured yet.[/yellow]")
+        console.print("Run [cyan]uv run lemida-cli telegram config[/cyan] to set up.")
+        return
+
+    cfg = load_telegram_config()
+    cache = load_uploads_cache()
+
+    console.print(f"[bold cyan]Telegram Configuration:[/bold cyan]")
+    console.print(f"  API ID: [green]{cfg.get('api_id')}[/green]")
+    console.print(f"  Target Chat: [green]{cfg.get('target_chat')}[/green]")
+    if cfg.get("topic_id"):
+        console.print(f"  Forum Topic ID: [green]{cfg.get('topic_id')}[/green]")
+    if cfg.get("bot_token"):
+        console.print(f"  Auth: [magenta]Bot Token[/magenta]")
+    else:
+        console.print(f"  Auth: [magenta]User Account (MTProto)[/magenta]")
+
+    console.print(f"\n[dim]Uploaded Videos Cache:[/dim] [bold green]{len(cache)}[/bold green] videos recorded in ~/.lemida_telegram_uploads.json")
+
+
+@telegram_app.command("upload")
+def telegram_upload(
+    course_input: Optional[str] = typer.Argument(None, help="Course ID or URL to crawl and upload"),
+    file: Optional[str] = typer.Option(None, "--file", "-f", help="Upload from an exported JSON file"),
+    channel: Optional[str] = typer.Option(None, "--channel", "-c", help="Override destination Telegram channel/chat"),
+    topic: Optional[int] = typer.Option(None, "--topic", "-t", help="Override forum topic ID"),
+):
+    """
+    Upload course videos directly to Telegram (from a Course ID or from an exported JSON file).
+    """
+    import asyncio
+    from .telegram_client import (
+        TelegramUploader,
+        parse_videos_from_json,
+        is_already_uploaded,
+        is_telegram_configured,
+        load_telegram_config,
+    )
+    from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn
+
+    if not is_telegram_configured():
+        console.print("[bold red]Telegram is not configured.[/bold red]")
+        console.print("Run [cyan]uv run lemida-cli telegram config[/cyan] first.")
+        sys.exit(1)
+
+    # 1. Resolve source of videos (JSON file vs Course crawl)
+    if file:
+        console.print(f"[cyan]Loading videos from JSON file:[/cyan] [bold]{file}[/bold]")
+        try:
+            course, videos = parse_videos_from_json(file)
+        except Exception as e:
+            console.print(f"[bold red]Failed to load JSON file:[/bold red] {e}")
+            sys.exit(1)
+    elif course_input:
+        from .crawler import crawl_course_videos
+        console.print(f"[cyan]Crawling Lemida for Course {course_input}...[/cyan]")
+        course, videos = crawl_course_videos(course_input, headless=True)
+    else:
+        console.print("[bold red]Please specify either a Course ID or an exported JSON file with --file <path>.[/bold red]")
+        sys.exit(1)
+
+    if not videos:
+        console.print("[yellow]No video links found to upload.[/yellow]")
+        return
+
+    console.print(f"\n[bold green]Ready to upload {len(videos)} videos from '{course.title}'[/bold green]")
+
+    cfg = load_telegram_config()
+    if channel:
+        cfg["target_chat"] = channel
+    if topic is not None:
+        cfg["topic_id"] = topic
+
+    uploader = TelegramUploader(cfg)
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    try:
+        console.print("[dim]Connecting to Telegram MTProto...[/dim]")
+        connected = loop.run_until_complete(uploader.connect(interactive=True))
+        if not connected:
+            console.print("[bold red]Failed to authenticate with Telegram.[/bold red]")
+            sys.exit(1)
+
+        for idx, vid in enumerate(videos, 1):
+            if is_already_uploaded(vid.url):
+                console.print(f"[dim][{idx}/{len(videos)}] ⏭ Skipped (already uploaded): {vid.title}[/dim]")
+                continue
+
+            console.print(f"\n[bold cyan][{idx}/{len(videos)}] Processing: {vid.title}[/bold cyan]")
+
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TimeRemainingColumn(),
+                transient=True,
+            ) as progress:
+                upload_task = progress.add_task("Uploading to Telegram...", total=100)
+
+                def progress_cb(current, total):
+                    if total > 0:
+                        pct = (current / total) * 100
+                        progress.update(upload_task, completed=pct)
+
+                success, msg = loop.run_until_complete(
+                    uploader.upload_video(vid, course=course, progress_cb=progress_cb)
+                )
+
+            if success:
+                console.print(f"[bold green]✓ {msg}[/bold green]")
+            else:
+                console.print(f"[bold red]✗ {msg}[/bold red]")
+
+        console.print("\n[bold green]✓ All uploads completed![/bold green]")
+
+    finally:
+        loop.run_until_complete(uploader.disconnect())
+        loop.close()
+
+
 def main():
     app()
 
 
 if __name__ == "__main__":
     main()
+
