@@ -12,12 +12,20 @@ ENV/
 .lemida_session.json
 *.session.json
 
+# Telegram credentials & sessions (keep private)
+.lemida_telegram.json
+*.telegram.json
+.lemida_telegram_uploads.json
+.lemida_sessions/
+*.session
+
 # Exported media / downloads
 *.mp4
 *.m3u
 *.m3u8
 videos.txt
 videos.json
+*_videos.json
 
 # IDE / OS
 .DS_Store
