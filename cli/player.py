@@ -13,18 +13,40 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 
-COMMON_VLC_WINDOWS_PATHS = [
-    Path(r"C:\Program Files\VideoLAN\VLC\vlc.exe"),
-    Path(r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe"),
-    Path(os.path.expandvars(r"%LOCALAPPDATA%\Programs\VideoLAN\VLC\vlc.exe")),
-]
+def _get_candidate_vlc_paths() -> List[Path]:
+    """Dynamically locates VLC paths across Windows, macOS, and Linux."""
+    paths: List[Path] = []
+    if sys.platform == "win32":
+        for env_var in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"]:
+            val = os.environ.get(env_var)
+            if val:
+                paths.append(Path(val) / "VideoLAN" / "VLC" / "vlc.exe")
+                paths.append(Path(val) / "Programs" / "VideoLAN" / "VLC" / "vlc.exe")
+    elif sys.platform == "darwin":
+        paths.extend([
+            Path("/Applications/VLC.app/Contents/MacOS/VLC"),
+            Path.home() / "Applications/VLC.app/Contents/MacOS/VLC",
+        ])
+    return paths
 
-COMMON_MPV_WINDOWS_PATHS = [
-    Path(os.path.expandvars(r"%LOCALAPPDATA%\Programs\mpv\mpv.exe")),
-    Path(r"C:\Program Files\mpv\mpv.exe"),
-    Path(r"C:\ProgramData\chocolatey\bin\mpv.exe"),
-    Path(os.path.expandvars(r"%USERPROFILE%\scoop\apps\mpv\current\mpv.exe")),
-]
+
+def _get_candidate_mpv_paths() -> List[Path]:
+    """Dynamically locates MPV paths across Windows, macOS, and Linux."""
+    paths: List[Path] = []
+    if sys.platform == "win32":
+        for env_var in ["LOCALAPPDATA", "ProgramFiles", "ProgramData"]:
+            val = os.environ.get(env_var)
+            if val:
+                paths.append(Path(val) / "Programs" / "mpv" / "mpv.exe")
+                paths.append(Path(val) / "mpv" / "mpv.exe")
+                paths.append(Path(val) / "chocolatey" / "bin" / "mpv.exe")
+        paths.append(Path.home() / "scoop" / "apps" / "mpv" / "current" / "mpv.exe")
+    elif sys.platform == "darwin":
+        paths.extend([
+            Path("/opt/homebrew/bin/mpv"),
+            Path("/usr/local/bin/mpv"),
+        ])
+    return paths
 
 
 def detect_available_players() -> Dict[str, Optional[str]]:
@@ -33,8 +55,8 @@ def detect_available_players() -> Dict[str, Optional[str]]:
 
     # 1. MPV
     mpv_path = shutil.which("mpv")
-    if not mpv_path and sys.platform == "win32":
-        for p in COMMON_MPV_WINDOWS_PATHS:
+    if not mpv_path:
+        for p in _get_candidate_mpv_paths():
             if p.is_file():
                 mpv_path = str(p)
                 break
@@ -42,8 +64,8 @@ def detect_available_players() -> Dict[str, Optional[str]]:
 
     # 2. VLC
     vlc_path = shutil.which("vlc")
-    if not vlc_path and sys.platform == "win32":
-        for p in COMMON_VLC_WINDOWS_PATHS:
+    if not vlc_path:
+        for p in _get_candidate_vlc_paths():
             if p.is_file():
                 vlc_path = str(p)
                 break

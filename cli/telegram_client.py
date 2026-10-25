@@ -19,9 +19,9 @@ from telethon.tl.types import Message
 
 from .parser import VideoItem, CourseInfo
 
-CONFIG_FILE = Path(os.path.expanduser("~/.lemida_telegram.json"))
-UPLOADS_CACHE_FILE = Path(os.path.expanduser("~/.lemida_telegram_uploads.json"))
-SESSION_DIR = Path(os.path.expanduser("~/.lemida_sessions"))
+CONFIG_FILE = Path(os.getenv("LEMIDA_TELEGRAM_CONFIG", Path.home() / ".lemida_telegram.json"))
+UPLOADS_CACHE_FILE = Path(os.getenv("LEMIDA_UPLOADS_CACHE", Path.home() / ".lemida_telegram_uploads.json"))
+SESSION_DIR = Path(os.getenv("LEMIDA_SESSIONS_DIR", Path.home() / ".lemida_sessions"))
 
 
 def load_telegram_config() -> Dict[str, Any]:

@@ -34,10 +34,7 @@ A Chrome Extension and powerful Python CLI (managed with `uv`) to authenticate a
    ```
 2. Enable **Developer mode** toggle in the top-right corner.
 3. Click **Load unpacked** (טען תוסף לא ארוז).
-4. Select the `extension/` folder in this repository:
-   ```text
-   c:\Users\thomy\Projects\Lemida-Video-finder-plugin\extension
-   ```
+4. Select the `extension/` folder inside your cloned repository.
 5. Navigate to any Lemida course, for example:
    ```text
    https://lemida.biu.ac.il/course/view.php?id=108883
