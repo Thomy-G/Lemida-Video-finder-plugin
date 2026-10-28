@@ -81,6 +81,12 @@ class TestTelegramAndPlayer(unittest.TestCase):
         default = get_default_player()
         self.assertIn(default, ["vlc", "mpv", "ffplay", "system"])
 
+    def test_uploader_methods_exist(self):
+        from cli.telegram_client import TelegramUploader
+        self.assertTrue(hasattr(TelegramUploader, "create_forum_topic"))
+        self.assertTrue(hasattr(TelegramUploader, "upload_video"))
+        self.assertTrue(hasattr(TelegramUploader, "download_stream_to_temp"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -43,7 +43,7 @@ def save_telegram_config(config: Dict[str, Any]) -> None:
 def is_telegram_configured() -> bool:
     """Checks whether the minimum required Telegram credentials are set."""
     cfg = load_telegram_config()
-    return bool(cfg.get("api_id") and cfg.get("api_hash") and cfg.get("target_chat"))
+    return bool(cfg.get("api_id") and cfg.get("api_hash"))
 
 
 def load_uploads_cache() -> Dict[str, Any]:
@@ -306,3 +306,61 @@ class TelegramUploader:
                     local_path.unlink()
                 except Exception:
                     pass
+
+    async def create_forum_topic(
+        self,
+        title: str,
+        target_chat: Optional[Any] = None,
+        icon_color: Optional[int] = None,
+    ) -> Tuple[Optional[int], str]:
+        """
+        Creates a new forum topic in the target supergroup/channel and returns its topic ID.
+        """
+        from telethon.tl.functions.messages import CreateForumTopicRequest
+        import random
+
+        dest_chat = target_chat or self.target_chat
+        if not dest_chat:
+            return None, "Target chat/group is not specified."
+
+        if isinstance(dest_chat, str) and "_" in dest_chat:
+            dest_chat = dest_chat.split("_", 1)[0]
+
+        if isinstance(dest_chat, str) and (
+            dest_chat.startswith("-100") or dest_chat.isdigit() or (dest_chat.startswith("-") and dest_chat[1:].isdigit())
+        ):
+            try:
+                dest_chat = int(dest_chat)
+            except ValueError:
+                pass
+
+        try:
+            entity = await self.client.get_input_entity(dest_chat)
+            random_id = random.randint(1, 2**63 - 1)
+            res = await self.client(
+                CreateForumTopicRequest(
+                    peer=entity,
+                    title=title,
+                    random_id=random_id,
+                    icon_color=icon_color,
+                )
+            )
+
+            topic_id = None
+            for u in getattr(res, "updates", []):
+                msg = getattr(u, "message", None)
+                if msg and getattr(msg, "id", None):
+                    topic_id = msg.id
+                    break
+
+            if not topic_id and hasattr(res, "id"):
+                topic_id = res.id
+
+            if topic_id:
+                return topic_id, f"Created topic '{title}' with Topic ID: {topic_id}"
+            else:
+                return None, "Topic created but could not determine topic ID."
+
+        except Exception as e:
+            return None, f"Failed to create topic: {str(e)}"
+

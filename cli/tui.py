@@ -209,6 +209,13 @@ class LemidaTUIApp(App):
                         )
                         yield Button("Load & Upload from JSON", id="start-json-upload-btn", variant="warning")
 
+                    with Horizontal(classes="action-bar"):
+                        yield Input(
+                            placeholder="Create new topic (e.g. [89210] Algorithms 1)",
+                            id="new-topic-title-input",
+                        )
+                        yield Button("➕ Create Topic", id="create-topic-btn", variant="primary")
+
                     yield Label("Idle", id="upload-status-label")
                     yield ProgressBar(id="upload-progress-bar", total=100, show_eta=True)
                     yield RichLog(id="upload-log", highlight=True, markup=True)
@@ -487,6 +494,40 @@ class LemidaTUIApp(App):
             loop.close()
             self.is_uploading = False
 
+    @work(thread=True)
+    def create_topic_background(self, title: str) -> None:
+        """Worker that connects to Telegram and creates a new topic."""
+        log = self.query_one("#upload-log", RichLog)
+        if not is_telegram_configured():
+            self.app.call_from_thread(self.notify, "Configure Telegram in Settings first!", severity="error")
+            return
+
+        uploader = TelegramUploader()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            self.app.call_from_thread(log.write, f"[cyan]Creating topic '{title}'...[/cyan]")
+            connected = loop.run_until_complete(uploader.connect(interactive=False))
+            if not connected:
+                self.app.call_from_thread(log.write, "[bold red]Telegram not authenticated! Run 'lemida-cli telegram config' in terminal once.[/bold red]")
+                return
+
+            topic_id, msg = loop.run_until_complete(uploader.create_forum_topic(title))
+            if topic_id:
+                self.app.call_from_thread(log.write, f"[bold green]✓ {msg}[/bold green]")
+                self.app.call_from_thread(self.notify, f"Topic created! ID: {topic_id}", title="Topic Created")
+                # Auto set topic id in settings / config
+                self.tg_config["topic_id"] = topic_id
+                save_telegram_config(self.tg_config)
+            else:
+                self.app.call_from_thread(log.write, f"[bold red]✗ {msg}[/bold red]")
+                self.app.call_from_thread(self.notify, f"Error: {msg}", severity="error")
+        except Exception as e:
+            self.app.call_from_thread(log.write, f"[bold red]Error: {str(e)}[/bold red]")
+        finally:
+            loop.run_until_complete(uploader.disconnect())
+            loop.close()
+
     # ---------------- Button Handlers ----------------
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -528,6 +569,13 @@ class LemidaTUIApp(App):
                 self.start_telegram_upload(vids)
             except Exception as e:
                 self.notify(f"Could not load JSON: {str(e)}", severity="error")
+
+        elif button_id == "create-topic-btn":
+            t_title = self.query_one("#new-topic-title-input", Input).value.strip()
+            if not t_title:
+                self.notify("Please enter a topic title.", severity="warning")
+                return
+            self.create_topic_background(t_title)
 
         elif button_id == "save-settings-btn":
             cfg = {

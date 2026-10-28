@@ -354,12 +354,62 @@ def telegram_status():
     console.print(f"\n[dim]Uploaded Videos Cache:[/dim] [bold green]{len(cache)}[/bold green] videos recorded in ~/.lemida_telegram_uploads.json")
 
 
+@telegram_app.command("create-topic")
+def telegram_create_topic(
+    title: str = typer.Argument(..., help="Title for the new forum topic (e.g. '[89210] Algorithms 1')"),
+    channel: Optional[str] = typer.Option(None, "--channel", "-c", help="Override destination Telegram supergroup/channel"),
+):
+    """
+    Create a new forum topic in your Telegram supergroup/channel.
+    """
+    import asyncio
+    from .telegram_client import TelegramUploader, load_telegram_config, is_telegram_configured
+
+    if not is_telegram_configured():
+        console.print("[bold red]Telegram is not configured.[/bold red]")
+        console.print("Run [cyan]uv run lemida-cli telegram config[/cyan] first.")
+        sys.exit(1)
+
+    cfg = load_telegram_config()
+    if channel:
+        if "_" in channel:
+            cfg["target_chat"] = channel.split("_", 1)[0]
+        else:
+            cfg["target_chat"] = channel
+
+    uploader = TelegramUploader(cfg)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    try:
+        console.print(f"[cyan]Connecting to Telegram to create topic '{title}'...[/cyan]")
+        connected = loop.run_until_complete(uploader.connect(interactive=True))
+        if not connected:
+            console.print("[bold red]Failed to authenticate with Telegram.[/bold red]")
+            sys.exit(1)
+
+        topic_id, msg = loop.run_until_complete(uploader.create_forum_topic(title))
+        if topic_id:
+            console.print(f"[bold green]✓ {msg}[/bold green]")
+            console.print(f"\n[dim]To upload videos into this topic, run:[/dim]")
+            console.print(f"[cyan]uv run lemida-cli telegram upload <course_id> --topic {topic_id}[/cyan]")
+        else:
+            console.print(f"[bold red]✗ {msg}[/bold red]")
+            sys.exit(1)
+    finally:
+        loop.run_until_complete(uploader.disconnect())
+        loop.close()
+
+
 @telegram_app.command("upload")
 def telegram_upload(
     course_input: Optional[str] = typer.Argument(None, help="Course ID or URL to crawl and upload"),
     file: Optional[str] = typer.Option(None, "--file", "-f", help="Upload from an exported JSON file"),
     channel: Optional[str] = typer.Option(None, "--channel", "-c", help="Override destination Telegram channel/chat"),
     topic: Optional[int] = typer.Option(None, "--topic", "-t", help="Override forum topic ID"),
+    create_topic: bool = typer.Option(
+        False, "--create-topic", "--new-topic", help="Automatically create a new forum topic using the course title"
+    ),
 ):
     """
     Upload course videos directly to Telegram (from a Course ID or from an exported JSON file).
@@ -424,6 +474,17 @@ def telegram_upload(
         if not connected:
             console.print("[bold red]Failed to authenticate with Telegram.[/bold red]")
             sys.exit(1)
+
+        if create_topic:
+            topic_title = f"[{course.course_id}] {course.title}" if course.course_id and course.course_id != "unknown" else course.title
+            console.print(f"[cyan]Creating new Telegram topic: [bold]{topic_title}[/bold]...[/cyan]")
+            new_topic_id, t_msg = loop.run_until_complete(uploader.create_forum_topic(topic_title))
+            if new_topic_id:
+                console.print(f"[bold green]✓ {t_msg}[/bold green]")
+                uploader.topic_id = new_topic_id
+                cfg["topic_id"] = new_topic_id
+            else:
+                console.print(f"[bold yellow]Warning: {t_msg}. Proceeding with default destination.[/bold yellow]")
 
         for idx, vid in enumerate(videos, 1):
             if is_already_uploaded(vid.url):

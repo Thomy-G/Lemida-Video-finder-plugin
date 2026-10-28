@@ -145,18 +145,30 @@ Verify configuration anytime:
 uv run lemida-cli telegram status
 ```
 
-### Step 2: Upload from an Exported JSON File
+### Step 2: Create a New Topic (Optional)
+Create a new forum topic directly from the CLI:
 ```bash
-uv run lemida-cli telegram upload --file lemida_course_108883_videos.json
+uv run lemida-cli telegram create-topic "[89210] Algorithms 1"
+```
+*(Prints the newly created Topic ID, which you can use with `--topic <id>`)*
+
+### Step 3: Upload from an Exported JSON File
+```bash
+uv run lemida-cli telegram upload --file lemida_course_108883_videos.json --topic 2
 ```
 
-### Step 3: Direct Course Crawl & Upload
+### Step 4: Direct Course Crawl & Upload (with auto-created topic!)
 ```bash
-uv run lemida-cli telegram upload 108883
+# Automatically create a new topic named after the course and upload:
+uv run lemida-cli telegram upload 108883 --create-topic
+
+# Or upload into an existing topic ID:
+uv run lemida-cli telegram upload 108883 --topic 2
 ```
 *Options:*
 - `--channel <chat_id>`: Override target channel or group.
 - `--topic <topic_id>`: Post into a specific Telegram forum topic.
+- `--create-topic`: Automatically creates a new forum topic named `[course_id] Course Title` before uploading.
 - Deduplication cache (`~/.lemida_telegram_uploads.json`) automatically skips previously uploaded videos.
 
 ---
