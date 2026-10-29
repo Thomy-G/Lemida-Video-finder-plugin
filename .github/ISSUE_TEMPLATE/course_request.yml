@@ -1,0 +1,40 @@
+name: Course Video Upload Request
+description: Request a Lemida course to be uploaded to the Telegram lecture archive
+title: "[Course Request]: "
+labels: ["course-request"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting a course request! Fill out the information below.
+        A maintainer will review and approve the upload to Telegram.
+  - type: input
+    id: course_id
+    attributes:
+      label: Course ID
+      description: The Bar-Ilan Lemida course ID (e.g. 108103)
+      placeholder: "108103"
+    validations:
+      required: true
+  - type: input
+    id: course_name
+    attributes:
+      label: Course Name & Semester
+      description: The title and semester of the course
+      placeholder: "[108103] אלגוריתמים 1 (תשפ\"ו סמסטר ב')"
+    validations:
+      required: true
+  - type: textarea
+    id: course_json_b64
+    attributes:
+      label: Encoded Course Data (Optional)
+      description: |
+        If you exported `lemida_course_<id>_videos.json` using the Chrome extension, you can convert it to Base64 to keep links redacted:
+        In PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes('path_to_file.json'))`
+        Paste the base64 string inside code fences below:
+      placeholder: |
+        ```base64
+        paste_base64_string_here
+        ```
+    validations:
+      required: false

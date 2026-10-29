@@ -1,0 +1,149 @@
+name: Upload Course Videos to Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      course_id:
+        description: 'Lemida Course ID (e.g. 108103)'
+        required: false
+        type: string
+      topic_id:
+        description: 'Existing Telegram Topic ID (optional, e.g. 30)'
+        required: false
+        type: string
+      topic_title:
+        description: 'New Topic Title (optional, e.g. [108103] אלגוריתמים 1)'
+        required: false
+        type: string
+      create_topic:
+        description: 'Automatically create a new topic for this course?'
+        required: false
+        type: boolean
+        default: false
+      course_json_b64:
+        description: 'Base64-encoded course JSON (keeps links redacted & private)'
+        required: false
+        type: string
+
+  issues:
+    types: [labeled]
+
+jobs:
+  upload:
+    name: Download & Upload to Telegram
+    # Only run on manual dispatch, or when an issue is labeled 'upload' or 'approved' by a maintainer
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && (github.event.label.name == 'upload' || github.event.label.name == 'approved'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 360 # Up to 6 hours for large courses
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install project dependencies
+        run: uv sync
+
+      - name: Process & Mask Course Input
+        id: prepare
+        env:
+          INPUT_JSON_B64: ${{ github.event.inputs.course_json_b64 }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          mkdir -p /tmp/lemida
+          
+          # If triggered via workflow_dispatch with base64 JSON
+          if [ -n "$INPUT_JSON_B64" ]; then
+            echo "::add-mask::$INPUT_JSON_B64"
+            echo "$INPUT_JSON_B64" | base64 -d > /tmp/lemida/course.json
+            echo "has_json=true" >> $GITHUB_OUTPUT
+          
+          # If triggered via Issue label
+          elif [ "${{ github.event_name }}" = "issues" ]; then
+            # Extract base64 payload from issue body if formatted as ```base64 ... ```
+            B64=$(echo "$ISSUE_BODY" | awk '/```base64/{flag=1;next}/```/{flag=0}flag' | tr -d '\r\n ')
+            if [ -n "$B64" ]; then
+              echo "::add-mask::$B64"
+              echo "$B64" | base64 -d > /tmp/lemida/course.json
+              echo "has_json=true" >> $GITHUB_OUTPUT
+            else
+              echo "has_json=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "has_json=false" >> $GITHUB_OUTPUT
+          fi
+
+          # Mask all extracted URLs so GitHub Actions redacts them in public logs
+          if [ -f "/tmp/lemida/course.json" ]; then
+            uv run python -c "
+          import json
+          try:
+              data = json.load(open('/tmp/lemida/course.json', encoding='utf-8'))
+              for v in data.get('videos', []):
+                  url = v.get('url')
+                  if url:
+                      print(f'::add-mask::{url}')
+          except Exception:
+              pass
+          "
+          fi
+
+      - name: Run Telegram Upload
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION_STRING: ${{ secrets.TELEGRAM_SESSION_STRING }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          COURSE_ID: ${{ github.event.inputs.course_id }}
+          TOPIC_ID: ${{ github.event.inputs.topic_id }}
+          TOPIC_TITLE: ${{ github.event.inputs.topic_title }}
+          CREATE_TOPIC: ${{ github.event.inputs.create_topic }}
+          HAS_JSON: ${{ steps.prepare.outputs.has_json }}
+        run: |
+          # 1. Create topic if requested
+          EXTRA_ARGS=""
+          if [ -n "$TOPIC_TITLE" ]; then
+            echo "Creating topic: $TOPIC_TITLE"
+            uv run lemida-cli telegram create-topic "$TOPIC_TITLE"
+          fi
+
+          if [ -n "$TOPIC_ID" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --topic $TOPIC_ID"
+          fi
+
+          if [ "$CREATE_TOPIC" = "true" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --create-topic"
+          fi
+
+          # 2. Upload from JSON file or Course ID
+          if [ "$HAS_JSON" = "true" ]; then
+            echo "Uploading from protected JSON payload..."
+            uv run lemida-cli telegram upload --file /tmp/lemida/course.json $EXTRA_ARGS
+          elif [ -n "$COURSE_ID" ]; then
+            echo "Crawling and uploading Course ID: $COURSE_ID..."
+            uv run lemida-cli telegram upload "$COURSE_ID" $EXTRA_ARGS
+          else
+            echo "No course JSON or Course ID supplied."
+            exit 1
+          fi
+
+      - name: Comment on Issue upon Completion
+        if: github.event_name == 'issues' && success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🎉 **Course upload completed successfully!** All lectures have been added to the Telegram archive.'
+            });

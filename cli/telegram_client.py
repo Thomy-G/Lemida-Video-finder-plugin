@@ -43,7 +43,9 @@ def save_telegram_config(config: Dict[str, Any]) -> None:
 def is_telegram_configured() -> bool:
     """Checks whether the minimum required Telegram credentials are set."""
     cfg = load_telegram_config()
-    return bool(cfg.get("api_id") and cfg.get("api_hash"))
+    api_id = os.getenv("TELEGRAM_API_ID") or cfg.get("api_id")
+    api_hash = os.getenv("TELEGRAM_API_HASH") or cfg.get("api_hash")
+    return bool(api_id and api_hash)
 
 
 def load_uploads_cache() -> Dict[str, Any]:
@@ -76,91 +78,20 @@ def is_already_uploaded(video_url: str) -> bool:
     return video_url in cache
 
 
-def parse_videos_from_json(json_path: str | Path) -> Tuple[CourseInfo, List[VideoItem]]:
+def parse_videos_from_json(json_input: str | Path) -> Tuple[CourseInfo, List[VideoItem]]:
     """
-    Parses a JSON file exported from the Chrome extension or CLI.
-    Supports:
-    - Standard export: { "course": { "title": "...", "id": "..." }, "videos": [ ... ] }
-    - List of video objects: [ { "title": "...", "url": "..." }, ... ]
-    - Simple list of strings / URLs.
+    Parses videos from a local JSON file path or directly from a JSON/Base64 string.
     """
-    path = Path(json_path)
-    if not path.is_file():
-        raise FileNotFoundError(f"JSON file not found: {json_path}")
+    path = Path(json_input) if isinstance(json_input, (str, Path)) else None
+    if path and path.is_file():
+        content = path.read_text(encoding="utf-8")
+        course, vids = parse_videos_from_json_string(content)
+        if course.course_id == "unknown":
+            course.course_id = path.stem.replace("lemida_course_", "").replace("_videos", "")
+        return course, vids
 
-    data = json.loads(path.read_text(encoding="utf-8"))
-
-    course = CourseInfo(
-        title="Imported Course",
-        course_id=path.stem.replace("lemida_course_", "").replace("_videos", ""),
-        url="",
-    )
-
-    videos: List[VideoItem] = []
-
-    if isinstance(data, dict):
-        if "course" in data and isinstance(data["course"], dict):
-            c_data = data["course"]
-            course = CourseInfo(
-                title=c_data.get("title", course.title),
-                course_id=str(c_data.get("id", course.course_id)),
-                url=c_data.get("url", ""),
-            )
-
-        raw_videos = data.get("videos", [])
-        if isinstance(raw_videos, list):
-            for idx, item in enumerate(raw_videos, 1):
-                if isinstance(item, dict) and "url" in item:
-                    # Filter out any internal Moodle page URLs
-                    url = item["url"]
-                    if any(x in url for x in ["/mod/", "/course/", "view.php"]):
-                        continue
-                    videos.append(
-                        VideoItem(
-                            id=item.get("id", f"vid_{idx}"),
-                            title=item.get("title", f"Video {idx}"),
-                            section=item.get("section", "General"),
-                            url=url,
-                            video_type=item.get("type") or item.get("video_type") or "video/mp4",
-                            xpath_matched=item.get("xpathMatched") or item.get("xpath_matched") or "json_import",
-                            source_type=item.get("sourceType") or item.get("source_type") or "imported_json",
-                            origin_url=item.get("originUrl") or item.get("origin_url"),
-                        )
-                    )
-
-    elif isinstance(data, list):
-        for idx, item in enumerate(data, 1):
-            if isinstance(item, dict) and "url" in item:
-                url = item["url"]
-                if any(x in url for x in ["/mod/", "/course/", "view.php"]):
-                    continue
-                videos.append(
-                    VideoItem(
-                        id=f"vid_{idx}",
-                        title=item.get("title", f"Video {idx}"),
-                        section=item.get("section", "General"),
-                        url=url,
-                        video_type=item.get("type", "video/mp4"),
-                        xpath_matched="json_import",
-                        source_type="imported_json",
-                    )
-                )
-            elif isinstance(item, str) and item.startswith("http"):
-                if any(x in item for x in ["/mod/", "/course/", "view.php"]):
-                    continue
-                videos.append(
-                    VideoItem(
-                        id=f"vid_{idx}",
-                        title=f"Video {idx}",
-                        section="General",
-                        url=item,
-                        video_type="video/mp4",
-                        xpath_matched="json_import",
-                        source_type="imported_json",
-                    )
-                )
-
-    return course, videos
+    # Otherwise treat as raw string / base64 string
+    return parse_videos_from_json_string(str(json_input))
 
 
 class TelegramUploader:
@@ -171,16 +102,21 @@ class TelegramUploader:
         SESSION_DIR.mkdir(parents=True, exist_ok=True)
         session_path = str(SESSION_DIR / "lemida_telethon")
 
-        self.api_id = self.config.get("api_id")
-        self.api_hash = self.config.get("api_hash")
-        self.bot_token = self.config.get("bot_token")
-        self.target_chat = self.config.get("target_chat")
-        self.topic_id = self.config.get("topic_id")
+        self.api_id = os.getenv("TELEGRAM_API_ID") or self.config.get("api_id")
+        self.api_hash = os.getenv("TELEGRAM_API_HASH") or self.config.get("api_hash")
+        self.bot_token = os.getenv("TELEGRAM_BOT_TOKEN") or self.config.get("bot_token")
+        self.target_chat = os.getenv("TELEGRAM_CHAT_ID") or self.config.get("target_chat")
+        self.topic_id = os.getenv("TELEGRAM_TOPIC_ID") or self.config.get("topic_id")
+        self.session_string = os.getenv("TELEGRAM_SESSION_STRING") or self.config.get("session_string")
 
         if not self.api_id or not self.api_hash:
-            raise ValueError("Telegram api_id and api_hash must be configured in ~/.lemida_telegram.json")
+            raise ValueError("Telegram api_id and api_hash must be configured via environment or ~/.lemida_telegram.json")
 
-        self.client = TelegramClient(session_path, int(self.api_id), str(self.api_hash))
+        from telethon.sessions import StringSession
+        if self.session_string:
+            self.client = TelegramClient(StringSession(self.session_string), int(self.api_id), str(self.api_hash))
+        else:
+            self.client = TelegramClient(session_path, int(self.api_id), str(self.api_hash))
 
     async def connect(self, interactive: bool = True) -> bool:
         """Connects and authenticates with Telegram."""
@@ -268,6 +204,8 @@ class TelegramUploader:
         # Download to temp file
         local_path = None
         try:
+            if os.getenv("GITHUB_ACTIONS") == "true":
+                print(f"::add-mask::{video.url}", flush=True)
             filename = f"{video.title[:40]}.mp4"
             local_path = self.download_stream_to_temp(video.url, filename_hint=filename)
 
@@ -363,4 +301,103 @@ class TelegramUploader:
 
         except Exception as e:
             return None, f"Failed to create topic: {str(e)}"
+
+
+def parse_videos_from_json_string(json_text: str) -> Tuple[CourseInfo, List[VideoItem]]:
+    """Parses videos from a raw JSON or Base64 string directly in memory."""
+    import base64
+    text = json_text.strip()
+    if text.startswith("ey") or not text.startswith(("{", "[")):
+        try:
+            decoded = base64.b64decode(text).decode("utf-8")
+            text = decoded
+        except Exception:
+            pass
+
+    data = json.loads(text)
+    course = CourseInfo(title="Imported Course", course_id="unknown", url="")
+    videos: List[VideoItem] = []
+
+    if isinstance(data, dict):
+        if "course" in data and isinstance(data["course"], dict):
+            c_data = data["course"]
+            course = CourseInfo(
+                title=c_data.get("title", course.title),
+                course_id=str(c_data.get("id", course.course_id)),
+                url=c_data.get("url", ""),
+            )
+
+        raw_videos = data.get("videos", [])
+        if isinstance(raw_videos, list):
+            for idx, item in enumerate(raw_videos, 1):
+                if isinstance(item, dict) and "url" in item:
+                    url = item["url"]
+                    if any(x in url for x in ["/mod/", "/course/", "view.php"]):
+                        continue
+                    videos.append(
+                        VideoItem(
+                            id=item.get("id", f"vid_{idx}"),
+                            title=item.get("title", f"Video {idx}"),
+                            section=item.get("section", "General"),
+                            url=url,
+                            video_type=item.get("type") or item.get("video_type") or "video/mp4",
+                            xpath_matched=item.get("xpathMatched") or item.get("xpath_matched") or "json_import",
+                            source_type=item.get("sourceType") or item.get("source_type") or "imported_json",
+                            origin_url=item.get("originUrl") or item.get("origin_url"),
+                        )
+                    )
+
+    elif isinstance(data, list):
+        for idx, item in enumerate(data, 1):
+            if isinstance(item, dict) and "url" in item:
+                url = item["url"]
+                if any(x in url for x in ["/mod/", "/course/", "view.php"]):
+                    continue
+                videos.append(
+                    VideoItem(
+                        id=f"vid_{idx}",
+                        title=item.get("title", f"Video {idx}"),
+                        section=item.get("section", "General"),
+                        url=url,
+                        video_type=item.get("type", "video/mp4"),
+                        xpath_matched="json_import",
+                        source_type="imported_json",
+                    )
+                )
+            elif isinstance(item, str) and item.startswith("http"):
+                if any(x in item for x in ["/mod/", "/course/", "view.php"]):
+                    continue
+                videos.append(
+                    VideoItem(
+                        id=f"vid_{idx}",
+                        title=f"Video {idx}",
+                        section="General",
+                        url=item,
+                        video_type="video/mp4",
+                        xpath_matched="json_import",
+                        source_type="imported_json",
+                    )
+                )
+
+    return course, videos
+
+
+async def export_session_string(config: Optional[Dict[str, Any]] = None) -> str:
+    """Exports active or new Telethon session as a portable string for GitHub Secrets."""
+    from telethon.sessions import StringSession
+    cfg = config or load_telegram_config()
+    api_id = os.getenv("TELEGRAM_API_ID") or cfg.get("api_id")
+    api_hash = os.getenv("TELEGRAM_API_HASH") or cfg.get("api_hash")
+    if not api_id or not api_hash:
+        raise ValueError("Telegram api_id and api_hash must be configured first.")
+
+    SESSION_DIR.mkdir(parents=True, exist_ok=True)
+    session_path = str(SESSION_DIR / "lemida_telethon")
+
+    client = TelegramClient(session_path, int(api_id), str(api_hash))
+    await client.start()
+    str_session = StringSession.save(client.session)
+    await client.disconnect()
+    return str_session
+
 

@@ -354,6 +354,34 @@ def telegram_status():
     console.print(f"\n[dim]Uploaded Videos Cache:[/dim] [bold green]{len(cache)}[/bold green] videos recorded in ~/.lemida_telegram_uploads.json")
 
 
+@telegram_app.command("export-session")
+def telegram_export_session():
+    """
+    Export your authenticated Telegram session as a portable string for GitHub Secrets.
+    """
+    import asyncio
+    from .telegram_client import export_session_string, is_telegram_configured
+
+    if not is_telegram_configured():
+        console.print("[bold red]Telegram is not configured.[/bold red]")
+        console.print("Run [cyan]uv run lemida-cli telegram config[/cyan] first.")
+        sys.exit(1)
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        console.print("[cyan]Generating portable session string...[/cyan]")
+        session_str = loop.run_until_complete(export_session_string())
+        console.print("\n[bold green]✓ Session string generated successfully![/bold green]")
+        console.print("[dim]Add this value as a Secret named [/dim][bold cyan]TELEGRAM_SESSION_STRING[/bold cyan][dim] in your GitHub Repository settings:[/dim]\n")
+        console.print(f"[bold yellow]{session_str}[/bold yellow]\n")
+    except Exception as e:
+        console.print(f"[bold red]Failed to export session:[/bold red] {e}")
+        sys.exit(1)
+    finally:
+        loop.close()
+
+
 @telegram_app.command("create-topic")
 def telegram_create_topic(
     title: str = typer.Argument(..., help="Title for the new forum topic (e.g. '[89210] Algorithms 1')"),

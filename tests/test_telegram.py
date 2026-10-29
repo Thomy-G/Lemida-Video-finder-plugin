@@ -87,6 +87,19 @@ class TestTelegramAndPlayer(unittest.TestCase):
         self.assertTrue(hasattr(TelegramUploader, "upload_video"))
         self.assertTrue(hasattr(TelegramUploader, "download_stream_to_temp"))
 
+    def test_parse_videos_from_base64_string(self):
+        import base64
+        from cli.telegram_client import parse_videos_from_json
+        sample = {
+            "course": {"title": "Base64 Course", "id": "99999"},
+            "videos": [{"title": "V1", "url": "https://host.com/stream.mp4"}]
+        }
+        b64 = base64.b64encode(json.dumps(sample).encode("utf-8")).decode("utf-8")
+        course, videos = parse_videos_from_json(b64)
+        self.assertEqual(course.title, "Base64 Course")
+        self.assertEqual(len(videos), 1)
+        self.assertEqual(videos[0].url, "https://host.com/stream.mp4")
+
 
 if __name__ == "__main__":
     unittest.main()
