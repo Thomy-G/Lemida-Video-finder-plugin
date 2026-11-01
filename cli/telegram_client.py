@@ -207,8 +207,11 @@ class TelegramUploader:
         try:
             if os.getenv("GITHUB_ACTIONS") == "true":
                 print(f"::add-mask::{video.url}", flush=True)
+            print(f"📥 Downloading: {video.title}...", flush=True)
             filename = f"{video.title[:40]}.mp4"
             local_path = self.download_stream_to_temp(video.url, filename_hint=filename)
+            size_mb = local_path.stat().st_size / (1024 * 1024)
+            print(f"📤 Uploading to Telegram ({size_mb:.1f} MB)...", flush=True)
 
             # Build markdown caption
             course_title = course.title if course else "Lemida BIU Course"
