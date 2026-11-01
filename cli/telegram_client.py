@@ -157,12 +157,17 @@ class TelegramUploader:
             safe_name += ".mp4"
         out_path = temp_dir / safe_name
 
-        with requests.get(url, stream=True, timeout=60) as r:
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+
+        with session.get(url, stream=True, timeout=120) as r:
             r.raise_for_status()
             total_size = int(r.headers.get("content-length", 0))
             downloaded = 0
-            with open(out_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1MB chunks
+            with open(out_path, "wb", buffering=4 * 1024 * 1024) as f:
+                for chunk in r.iter_content(chunk_size=4 * 1024 * 1024):  # 4MB chunks
                     if chunk:
                         f.write(chunk)
                         downloaded += len(chunk)
