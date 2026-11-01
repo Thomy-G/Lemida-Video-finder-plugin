@@ -221,14 +221,19 @@ class TelegramUploader:
 
             caption = "\n".join(caption_lines)
 
-            # Upload using Telethon
+            # Upload using Telethon with maximum 512KB chunk size
+            uploaded_file = await self.client.upload_file(
+                local_path,
+                part_size_kb=512,
+                progress_callback=progress_cb,
+            )
+
             msg = await self.client.send_file(
                 dest_chat,
-                local_path,
+                uploaded_file,
                 caption=caption,
                 reply_to=dest_topic if dest_topic else None,
                 supports_streaming=True,
-                progress_callback=progress_cb,
             )
 
             msg_id = msg.id if hasattr(msg, "id") else 0
