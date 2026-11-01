@@ -114,7 +114,8 @@ class TelegramUploader:
 
         from telethon.sessions import StringSession
         if self.session_string:
-            self.client = TelegramClient(StringSession(self.session_string), int(self.api_id), str(self.api_hash))
+            clean_str = self.session_string.strip().replace("\r", "").replace("\n", "").replace(" ", "")
+            self.client = TelegramClient(StringSession(clean_str), int(self.api_id), str(self.api_hash))
         else:
             self.client = TelegramClient(session_path, int(self.api_id), str(self.api_hash))
 
@@ -395,9 +396,16 @@ async def export_session_string(config: Optional[Dict[str, Any]] = None) -> str:
     session_path = str(SESSION_DIR / "lemida_telethon")
 
     client = TelegramClient(session_path, int(api_id), str(api_hash))
-    await client.start()
-    str_session = StringSession.save(client.session)
+    await client.connect()
+    if not await client.is_user_authorized():
+        await client.start()
+
+    string_client = TelegramClient(StringSession(), int(api_id), str(api_hash))
+    string_client.session.set_dc(client.session.dc_id, client.session.server_address, client.session.port)
+    string_client.session.auth_key = client.session.auth_key
+    saved = string_client.session.save()
+
     await client.disconnect()
-    return str_session
+    return saved
 
 
