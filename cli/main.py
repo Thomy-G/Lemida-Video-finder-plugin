@@ -372,9 +372,17 @@ def telegram_export_session():
     try:
         console.print("[cyan]Generating portable session string...[/cyan]")
         session_str = loop.run_until_complete(export_session_string())
+        
+        # Auto-copy to clipboard
+        from .tui import copy_to_clipboard
+        copied = copy_to_clipboard(session_str)
+
         console.print("\n[bold green]✓ Session string generated successfully![/bold green]")
+        if copied:
+            console.print("[bold green]✓ Already copied to your clipboard![/bold green]")
         console.print("[dim]Add this value as a Secret named [/dim][bold cyan]TELEGRAM_SESSION_STRING[/bold cyan][dim] in your GitHub Repository settings:[/dim]\n")
-        console.print(f"[bold yellow]{session_str}[/bold yellow]\n")
+        print(session_str)
+        print()
     except Exception as e:
         console.print(f"[bold red]Failed to export session:[/bold red] {e}")
         sys.exit(1)
